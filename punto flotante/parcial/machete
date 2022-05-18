@@ -1,0 +1,11 @@
+pila: 
+
+usamos el registro r29 como si fuese el sp 
+inicializamos: daddi r29,r0, 0x400
+
+push r1:     daddi r29,r29,-8
+             sd r1,0(r29)   
+
+pop r1:      ld r1, 0(r29)
+             daddi r29,r29,8    
+

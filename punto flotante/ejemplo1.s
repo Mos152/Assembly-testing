@@ -1,0 +1,12 @@
+;convertir el valor de A a flot y guardarlo en B 
+
+.data 
+A: .word 5 
+B: .double 0
+
+.code
+ld r4,A(r0)
+mtc1 r4,f2 
+cvt.d.l f2,f2 
+s.d f2,B(r0)
+halt  

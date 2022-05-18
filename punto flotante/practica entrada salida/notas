@@ -1,0 +1,116 @@
+dispositivos de e/s del simulador:  pantalla alfanumerica ,pantalla grafica, teclado
+
+para usarlos nesecitamos dos registros 
+
+CONTROL: para enviar codigo de operacion
+
+DATA: para enviar o recibir datos 
+
+entrada salida mapeada en memoria 
+
+-no hay IN/OUT 
+-Escribir/Leer memoria con SD/LD (en realidad escribe/lee en dispositivo)
+
+operaciones de salida con pantalla alfanumerica
+-valor a poner en CONTROL: 
+    *1 - imprime un entero sin signo 
+    *2 - imprime un entero con signo 
+    *3 - imprime un punto flotante 
+    ----imprimir un numero ,poner anter el numero en DATA----
+    *4 - imprime un string (asciiz) -----------------> imprimir un string, poner antes la direccion en DATA
+    *6 - limpia la pantalla alfanumerica    ---------> DATA no recibe nada 
+
+operaciones de salida con pantalla grafica
+-valor a poner en CONTROL 
+    *5 - cambia color un pixel de la pantalla grafica ---------> pintar un pixel, poner antes en:
+                                                                 DATA a DATA+3 en color RGBA (4 bytes)
+                                                                 DATA+4 la coordenada y 
+                                                                 DATA+5 la coordenada x             
+    *7 - limpia la pantalla grafica --------> DATA no recibe nada 
+
+operaciones de Entrada con Teclado 
+-valor a poner en CONTROL 
+    *8 - Leer un numero ------------> Buscar despues el numero en DATA
+        -sin coma: se guarda como entero 
+        -con coma: se guarda como flotante 
+    *9 - leer un caracter ------------> Buscar despues un caracter en DATA, Leer con LBU 
+        -uno solo 
+        -no nesecita precionar Enter 
+    *no se muestran en pantalla 
+
+¿como usar CONTROL y DATA?
+-CONTROL Y DATA son celdas de memoria 
+-se leen y escriben con instrucciones de memoria: LD/L.D/LBU/SD/S.D 
+-1er intento (no funciona)
+    -ld/sd $t1, DATA(r0)
+    -ld/sd $t1, CONTROL(r0)
+-problema 
+    -DATA y CONTROL no son variables
+    -NO estan definidas como etiquetas
+        -no pueden definirse como etiquetas 
+-2do intento (no funciona)
+    -ld/sd $t1, 0x100000(r0)
+    -ld/sd $t1, 0x100008(r0)
+-problema 
+    -las instrucciones de memoria se codifican como: cod.instruccion | cod.reg | dir.fija | cod.reg     
+    -dir fija puede tener 2 bytes como maximo 
+        -0x100000 y 0x100008 no entran  
+-3er intento (no funciona)
+    -daddi $t0,$0,0x10000
+    -ld/sd $t1,0($0)
+-problema 
+    -las instrucciones daddi se codifican como: cod.instruccion | cod.reg | cod.reg | valor 
+    -valor puede tener 2 bytes como maximo  
+        -0x10000 y 0x10008 no entran  
+-4to intento (funciona!!)
+    -.data 
+        DIR_CONTROL: .word 0x10000          ;guardo la direccion de control
+     .code 
+        ld $t2, DIR_CONTROL($0)             ;cargo el valor en $t2 , uso $t2 como puntero 
+        ld/sd $t1, 0($t2)                   ;si quiero escribir en CONTROL, USO ESTA INSTRUCCION 
+-$t2 tiene la direccion de CONTROL  
+    -se usa como puntero    
+-definimos DIR_CONTROL para guardar esa direccion 
+-5t0 intento (funciona!!!)
+    -.data 
+        DIR_CONTROL: .word32 0x10000
+        DIR_DATA:    .word32 0x10008 
+     .code 
+        lwu $t2, DIR_CONTROL($0)
+        lwu $t3, DIR_DATA($0)               ;LWU: carga 32 bits de memoria, interpretados como BSS
+
+--------------------------------------------------------------------------
+
+operaciones de entrada con Teclado 
+-valor a poner en control 
+    -8 -> lee un numero 
+        -sin coma -> se guarda como entero 
+        -con coma -> se guarda como flotante 
+    -9 -> leer un caracter 
+        -uno solo 
+        -no nesecita precionas Enter 
+        -no se muestran en pantalla     
+-----------------------------------------------------------------------
+
+representacion de imagenes: el simulador nos permite utilizar una pantalla alfanumerica para mostrar caracteres y numeros 
+y ademas nos permite utilizar una pantalla grafica en donde vamos a poder pintar pixeles y generar imagenes 
+
+Estandar True Color de 24 bits (3 bytes) 
+*3 canales: rojo (R),verde(G),Azul(B)
+*8 bits (1 byte) por canal 
+    -2^8 = 256 tonos por canal
+*24 bits = 2^24 = 16.777.216 colores en total 
+
+Estandar True Color de 32 bits (4 bytes)
+*RGBA (A = Alpha = transparencia)
+me permite decir que tan fuerte se va a mostrar el color
+
+-----------------------------------------------------
+pantalla grafica: 
+
+Operaciones de Salida con Pantalla grafica 
+*valor a poner en CONTROL
+    -5 cambia color un pixel de la pantalla grafica (poner antes en DATA a DATA+3 el color RGBA
+                                                    DATA+4 la coordenada Y
+                                                    DATA+5 la coordenada X )
+    -7 limpia la pantalla grafica (DATA no recibe nada)

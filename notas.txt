@@ -1,0 +1,272 @@
+cuando hay un atasco de raw, hay que esperar a que la instruccion termine las cinco etapas.
+
+cause segmentado:   
+
+*si el hardware se modifica para permitir que una instruccion aproveche la etapa que deja otra instruccion 
+, mejoramos el tiempo
+
+*en todo momento hay 5 etapas activas
+*los tiempos de ejecucion de las instrucciones son:
+    *1 instruccion -> 5 ciclos = 4 + 1
+    *2 instrucciones -> 6 ciclos = 4 + 2
+    *3 instrucciones -> 7 ciclos = 4 + 3 
+    ...
+    *N instrucciones -> 4 + N ciclos 
+*ciclos por instruccion (CPI): (4 + N) / N
+
+*los tiempos de ejecucion y ciclos por instruccion para 10, 100, 1000 instrucciones son:
+    *10 instrucciones -> CPI: (4 + 10) / 10 = 1,4
+    *100 instrucciones -> CPI: (4 + 100) / 100 = 1,04
+    *1000 instrucciones -> CPI: (4 + 1000) / 1000 = 1,004
+    *para un ciclo continuo de ejecucion donde N es muy grande -> CPI = (4 + n) /n = aprox 1
+
+el cause permite ejecutar 5 veces mas rapido: 1 instruccion por ciclo  
+
+etapas del cauce:
+
+*IF: Busqueda de instruccion,
+     recupera instruccion de memoria de programa
+     incrementa PC 
+     p/todas
+
+*ID: Decodificacion de instruccion 
+     se accede al banco de registro (todas menos x)
+     cuentas: si es operando inmediato(16 bits),se calcula el valor(extiende a 64 bits)
+     saltos: se calcula el destino y si se toma o no.
+
+*EX: ejecucion de la instruccion
+     cuentas: se ejecuta en la ALU
+     memoria: se calcula la direccion efectiva 
+     saltos: se almacena la direccion en PC
+
+*MEM: escribir o leer de memoria (solo las SD, LD, etc)
+
+*WB: se almacena el resultado en registro destino (todas menos X).
+
+Atascos RAW - Tecnica en Hardware: Forwarding
+
+nos permite minimizar la cantidad de atascos de tipo RAW
+
+esta opciones lo que hace es, mover los operandos de una instrucciones de la etapa
+ID a la etapa MEM , justamente para que no halla atascos de manera tan repentina
+
+adelantamiento de operandos o Forwarding
+
+1- se puede acceder a resultados antes de WB
+    *acceso a registros temporales 
+2- instrucciones se atascan solo cuando van a utilizar los operandos y no estan 
+    *etapa ID no verifica los operandos
+        -salvo para saltos condicionales
+    *instrucciones arismetico/logicas se atascan en EX
+    *instrucciones LD/SD se atascan en EX (si no esta el desplazamiento)
+    *instrucciones SD se atasca en MEM (si no esta el valor a guardar)
+
+
+atascos con saltos: reduccion con branch target buffer
+
+es una extencion de la cpu que nos va a permitir lidiar con los atascos por saltos
+
+1- nuevo circuito de la cpu
+    *prediccion de saltos (BEQZ,BNEZ,BEQ,BNE,J,JR)
+2- genera una tabla que nos permite guardar la direccion del ultimo saltos
+3- algoritmo de prediccion para cargar prox inst 
+    -si nunca se ejecuto el salto, carga siguiente direccion
+    -sino, cargar instruccion de la tabla
+
+en el caso que el btb este desactivado, la prediccion por defecto va a ser 'no saltar'
+    -si salto, va haber 1 atasco bts
+    -si no salto , va haber cero atascos 
+
+tabla                         INSTRUCCION  
+                ----------------------------------   
+                |    no saltar    |    saltar    | 
+     ---------------------------------------------
+     |NO SALTAR |   0 atascos     | 2 atascos bts|
+BTB  ---------------------------------------------
+     | SALTAR   |   2 atascos BMS |   0 atascos  |
+     ---------------------------------------------
+
+BMS: branch misprediction stall (atasco por prediccion incorrecta)
+    *como el bts pero cuando predecis saltar 
+por que 2 atascos?
+    *1 por cargar la instruccion incorrecta 
+    *1 para actualizar la tabla/buffer de btb
+
+
+
+loop tipico:
+
+.data
+
+A: .word 1
+B: .word 6
+
+.code 
+     LD R1,A(R0)
+     LD R2,B(R0)
+LOOP: DSLL R1,R1,1 
+      DADDI R2,R2,-1 
+      BNEZ R2,LOOP
+      HALT
+
+EJEMPLO SIN BTB
+
+*hacer 6 desplazamientos a izquierda de R1
+*6 iteraciones del loop
+*atascos bts?
+    *bts las primeras 5 iteraciones 
+    *la ultima no ---> 6-1 = 5 atascos 
+    *en general, N-1 atascos en N iteraciones   
+
+EJEMPLO CON BTB
+*hacer 6 desplazamientos a izquierda de R1
+*6 iteraciones del loop
+*atascos?
+    *2 bts en la primera iteracion 
+    *las siguientes 4 nada 
+    *2 bms en la ultima
+        *2 + 2 = 4 atascos
+    *en general,4 atascos en N iteraciones
+
+
+no usar el btb cuando se ejecuta un programa con pocas iteraciones 
+
+-------------------------------------------------
+
+delay slot o salto retardado
+*alternativa al btb
+*cambia la forma en que se ejecutan los saltos!!!!
+*salta un ciclo despues 
+*ejecutar siempre la instruccion siguiente al salto
+
+*0 atascos garantizados siempre
+    *pero hay que ubicar una instruccion despues del salto
+        *no siempre es posible
+        *no mejora el cpi
+
+
+ejemplo
+
+A: salto incondicional a D
+B: <Instruccion> 
+C: <Instruccion>
+D: <Instruccion>
+
+ejecucion normal:       (no saltar) --->  A,B,C,D
+                        (si saltar) --->  A,D
+
+ejecucion delay slot:   (no saltar) ---> A,B,C,D
+                        (si saltar) ---> A,B,D
+
+
+*REQUIERE MODIFICAR EL CODIGO PARA QUE SIGA FUNCIONANDO
+    *SOLUCION SIMPLE: AGREGA NOP
+        *EQUIVALENTE A TENER UN ATASCO
+        *BAJA EL CPI
+        *SIEMPRE ES POSIBLE
+    
+    *solucion 'eficiente': Reordenamiento
+        *cambiar de lugar instrucciones
+        *evitar atascos
+        *no siempre es posible
+            *y a veces genera RAW
+ejemplo
+
+codigo original 
+
+LOOP: DSLL R1, R1, 1
+      DADDI R2,R2,-1
+      BNEZ R2,LOOP
+      HALT
+
+Codigo corregido con NOP
+
+LOOP: DSLL R1,R1,1
+      DADDI R2,R2,-1 
+      BNEZ R2,LOOP 
+      NOP
+      HALT
+
+codigo corregido con Reordenamiento
+
+LOOP: DADDI R2,R2,-1 
+      BNEZ R2,LOOP
+      DSLL R1,  R1,1
+      HALT
+
+////////////////////////////////////////////////
+
+REGISTROS EN PUNTO FLOTANTE 
+
+*32 registros en punto flotante (f0...f31)
+*Nuevas instrucciones con "."
+    -l.d en lugar de ld 
+    -s.d en lugar de sd
+    -add.d en lugar de dadd
+        -sub.d, muld.d,div.d
+conversion de punto fijo a flotante 
+
+*valor en registro r
+*pasar a registro f 
+*ejemplo 
+    -pasar el valor de r4 a f2 
+    -dos instrucciones 
+    mtcl r4, f3 ---> copia los bits de r4 en f2 
+    cvt.d.l f2,f3 ----> convierte los bits de f3 de fijo a flotante y lo guarda en f2 
+    
+///////////////////////////////////////////////////////////////////
+
+nombre para los registros enteros 
+
+
+r0 ($zero) => siempre tiene el valor 0 y no se puede cambiar 
+r31 ($ra) => return address: direccion de retorno de subrutina DEBEN SER SALVADOS 
+r2 - r3 ($v0 - $v1) => cuando llamamos a una subrutina, nos va a devolver los valores de retorno de la subrutina llamada (se guarda resultado en r2 y r3 )
+r4 - r7 ($a0 - $a3)=> se usan para pasar parametros a una subrutina    
+r8 - r15 y r24-r25 ($t0 - $t9)  => variables locales DEBEN SER SALVADOS 
+r16 - r23 ($s0 - $s7) => variables tambien locales pero ninguna subrutina ni nada las puede tocar. DEBEN SER SALVADOS 
+r29 ($sp) => stack pointer: puntero al tope de la pila 
+r30 ($fp) => frame pointer: puntero de pila, DEBEN SER SALVADOS
+r1 ($at) => assembler temporaly: reservado para ser usado por el ensamblador 
+r26 - r27 ($K0 - $k1) para el uso del kernel del sistema operativo 
+r28 ($gp) global pointer: puntero a zona de memoria estatica, DEBEN SER SALVADOS 
+
+
+
+en el registro ra, siempre que llamamos a una subrutina desde otra subrutina, el return adress cambia, entonces antes de sobreescribirlo 
+hay que guardarlo.
+lo mismo para s y sp, si yo voy a utilizar uno de estos en una subrutina , si o si tengo que guardarlo antes en la pila y luego restaurarlo
+esta es la razon por la que dice DEBEN SER SALVADOS
+
+codigo de ejemplo: 
+
+.data 
+
+    result: .word 0 
+.code 
+daddi r4,r0,10 
+daddi r5,r0,20 
+jal sumar 
+sd r2, result (r0) 
+halt 
+sumar: dadd r2,r4,r5 
+       jr r31 
+
+uso de convension para parametros 
+
+.data 
+    result: .word 0
+.code 
+daddi $a0,$0,10 
+daddi $a1,$0,20 
+jal sumar 
+sd $v0, result ($zero)
+halt 
+
+sumar: dadd $v0,$a0,$a1
+       jr $ra
+
+uso de variables locals 
+
+
+
